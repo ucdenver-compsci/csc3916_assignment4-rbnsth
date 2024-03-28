@@ -25,45 +25,7 @@ app.use(passport.initialize());
 
 var router = express.Router();
 
-const crypto = require("crypto");
-var rp = require('request-promise');
-
-const GA_TRACKING_ID = process.env.GA_KEY;
-
-function trackDimension(category, action, label, value, dimension, metric) {
-
-    var options = {
-        method: 'GET',
-        url: 'https://www.google-analytics.com/collect',
-        qs:
-        {   // API Version.
-            v: '1',
-            // Tracking ID / Property ID.
-            tid: GA_TRACKING_ID,
-            // Random Client Identifier. Ideally, this should be a UUID that
-            // is associated with particular user, device, or browser instance.
-            cid: crypto.randomBytes(16).toString("hex"),
-            // Event hit type.
-            t: 'event',
-            // Event category.
-            ec: category,
-            // Event action.
-            ea: action,
-            // Event label.
-            el: label,
-            // Event value.
-            ev: value,
-            // Custom Dimension
-            cd1: dimension,
-            // Custom Metric
-            cm1: metric
-        },
-        headers:
-            { 'Cache-Control': 'no-cache' }
-    };
-
-    return rp(options);
-}
+const ga = require('universal-analytics');
 
 router.use(function (req, res, next) {
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
@@ -88,6 +50,23 @@ router.post('/reviews', function (req, res) {
     review.username = req.body.username;
     review.review = req.body.review;
     review.rating = req.body.rating;
+
+    // Get the genre of the movie
+    var genre = getGenreOfMovie(req.body.movieId); // Implement this function
+
+    // Create a new visitor with a unique user id
+    var visitor = ga('UA-XXXX-Y', 'userId');
+
+    // Send event to Google Analytics
+    visitor.event({
+        ec: genre, // Event Category
+        ea: '/reviews', // Event Action
+        el: 'API Request for Movie Review', // Event Label
+        ev: 1, // Event Value
+        cd1: req.body.movieId, // Custom Dimension 1: Movie Name
+        cm1: 1 // Custom Metric 1: Review Count
+    }).send();
+
     review.save(function (err) {
         if (err) {
             res.send(err);
