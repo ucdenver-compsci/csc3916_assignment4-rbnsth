@@ -15,6 +15,9 @@ var User = require('./Users');
 var Movie = require('./Movies');
 var Review = require('./Reviews');
 
+require('dotenv').config();
+
+
 var app = express();
 app.use(cors());
 app.use(bodyParser.json());
@@ -23,6 +26,47 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(passport.initialize());
 
 var router = express.Router();
+
+router.use(function (req, res, next) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    if (token) {
+        jwt.verify(token, process.env.SECRET, function (err, decoded) {
+            if (err) {
+                return res.json({ success: false, message: 'Failed to authenticate token.' });
+            } else {
+                req.decoded = decoded;
+                next();
+            }
+        });
+    } else {
+        return res.status(403).send({ success: false, message: 'No token provided.' });
+    }
+});
+
+// route to create a review
+router.post('/reviews', function (req, res) {
+    var review = new Review();
+    review.movieId = req.body.movieId;
+    review.username = req.body.username;
+    review.review = req.body.review;
+    review.rating = req.body.rating;
+    review.save(function (err) {
+        if (err) {
+            res.send(err);
+        }
+        res.json({ message: 'Review created!' });
+    });
+});
+
+// route to get all reviews
+router.get('/reviews', function (req, res) {
+    Review.find(function (err, reviews) {
+        if (err) {
+            res.send(err);
+        }
+        res.json(reviews);
+    });
+});
 
 function getJSONObjectForMovieRequirement(req) {
     var json = {
@@ -87,8 +131,12 @@ router.post('/signin', function (req, res) {
     })
 });
 
+
 app.use('/', router);
-app.listen(process.env.PORT || 8080);
+const port = process.env.PORT || 8000;
+app.listen(port, () => {
+    console.log('Server listening on port ' + port);
+})
 module.exports = app; // for testing only
 
 
