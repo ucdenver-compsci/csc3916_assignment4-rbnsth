@@ -15,8 +15,6 @@ var User = require('./Users');
 var Movie = require('./Movies');
 var Review = require('./Reviews');
 
-require('dotenv').config();
-
 
 var app = express();
 app.use(cors());
@@ -26,6 +24,46 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(passport.initialize());
 
 var router = express.Router();
+
+const crypto = require("crypto");
+var rp = require('request-promise');
+
+const GA_TRACKING_ID = process.env.GA_KEY;
+
+function trackDimension(category, action, label, value, dimension, metric) {
+
+    var options = {
+        method: 'GET',
+        url: 'https://www.google-analytics.com/collect',
+        qs:
+        {   // API Version.
+            v: '1',
+            // Tracking ID / Property ID.
+            tid: GA_TRACKING_ID,
+            // Random Client Identifier. Ideally, this should be a UUID that
+            // is associated with particular user, device, or browser instance.
+            cid: crypto.randomBytes(16).toString("hex"),
+            // Event hit type.
+            t: 'event',
+            // Event category.
+            ec: category,
+            // Event action.
+            ea: action,
+            // Event label.
+            el: label,
+            // Event value.
+            ev: value,
+            // Custom Dimension
+            cd1: dimension,
+            // Custom Metric
+            cm1: metric
+        },
+        headers:
+            { 'Cache-Control': 'no-cache' }
+    };
+
+    return rp(options);
+}
 
 router.use(function (req, res, next) {
     var token = req.body.token || req.query.token || req.headers['x-access-token'];
@@ -67,6 +105,38 @@ router.get('/reviews', function (req, res) {
         res.json(reviews);
     });
 });
+
+router.route('/reviews')
+    .post(passport.authenticate('jwt', { session: false }), function (req, res) {
+        var review = new Review();
+        review.title = req.body.title;
+        review.review = req.body.review;
+        review.movieId = req.body.movieId;
+        review.reviewer = req.body.reviewer;
+        review.rating = req.body.rating;
+
+        review.save(function (err) {
+            if (err) {
+                res.send(err);
+            }
+
+            // Track the event with Google Analytics
+            trackDimension(
+                'Review', // Event Category
+                '/reviews', // Event Action
+                'API Request for Movie Review', // Event Label
+                '1', // Event Value
+                review.title, // Custom Dimension (Movie Name)
+                '1'  // Custom Metric (Requested: Value 1)
+            ).then(function (response) {
+                console.log(response.body);
+                res.json({ message: 'Review created!' });
+            }).catch(function (error) {
+                console.error(error);
+                res.json({ message: 'Review created, but failed to track event.' });
+            });
+        });
+    });
 
 function getJSONObjectForMovieRequirement(req) {
     var json = {
@@ -129,6 +199,34 @@ router.post('/signin', function (req, res) {
             }
         })
     })
+});
+
+router.get('/movies', function (req, res) {
+    if (req.query.reviews === 'true') {
+        Movie.aggregate([
+            {
+                $lookup: {
+                    from: "reviews", // name of the foreign collection
+                    localField: "_id", // field in the movies collection
+                    foreignField: "movieId", // field in the reviews collection
+                    as: "reviews" // output array where the joined reviews will be placed
+                }
+            }
+        ]).exec(function (err, movies) {
+            if (err) {
+                res.send(err);
+            } else {
+                res.json(movies);
+            }
+        });
+    } else {
+        Movie.find(function (err, movies) {
+            if (err) {
+                res.send(err);
+            }
+            res.json(movies);
+        });
+    }
 });
 
 
