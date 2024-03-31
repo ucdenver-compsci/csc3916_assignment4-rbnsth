@@ -3,6 +3,7 @@ CSC3916 HW4
 File: Server.js
 Description: Web API scaffolding for Movie API
  */
+
 var express = require('express');
 var bodyParser = require('body-parser');
 var passport = require('passport');
@@ -13,6 +14,7 @@ var cors = require('cors');
 var User = require('./Users');
 var Movie = require('./Movies');
 var Review = require('./Reviews');
+
 
 var app = express();
 app.use(cors());
@@ -70,69 +72,54 @@ router.post('/signin', function (req, res) {
     userNew.username = req.body.username;
     userNew.password = req.body.password;
 
-    User.findOne({ username: userNew.username }).select('name username password').exec(function (err, user) {
+    User.findOne({ username: userNew.username }).select('name username password').exec(function(err, user) {
         if (err) {
             res.send(err);
         }
 
-        // Check if user exists before comparing password
-        if (user) {
-            user.comparePassword(userNew.password, function (isMatch) {
-                if (isMatch) {
-                    var userToken = { id: user.id, username: user.username };
-                    var token = jwt.sign(userToken, process.env.SECRET_KEY);
-                    res.json({ success: true, token: 'JWT ' + token });
-                }
-                else {
-                    res.status(401).send({ success: false, msg: 'Authentication failed.' });
-                }
-            });
-        } else {
-            res.status(401).send({ success: false, msg: 'Authentication failed. User not found.' });
-        }
+        user.comparePassword(userNew.password, function(isMatch) {
+            if (isMatch) {
+                var userToken = { id: user.id, username: user.username };
+                var token = jwt.sign(userToken, process.env.SECRET_KEY);
+                res.json ({success: true, token: 'JWT ' + token});
+            }
+            else {
+                res.status(401).send({success: false, msg: 'Authentication failed.'});
+            }
+        })
     })
 });
 
-router.route('/movies')
-    .get((req, res) => {
-        Movie.find({}, (err, movies) => {
+router.use(function (req, res, next) {
+    var token = req.body.token || req.query.token || req.headers['x-access-token'];
+    if (token) {
+        jwt.verify(token, process.env.SECRET, function (err, decoded) {
             if (err) {
-                return res.status(500).send(err);
+                return res.json({ success: false, message: 'Failed to authenticate token.' });
+            } else {
+                req.decoded = decoded;
+                next();
             }
-            res.json(movies);
         });
-    })
-    .post((req, res) => {
-        if (!req.body.title || !req.body.releaseDate || !req.body.genre || !req.body.actors) {
-            res.json({ success: false, msg: 'Please include all required fields: title, releaseDate, genre, and actors.' });
-        } else {
-            var movie = new Movie();
-            movie.title = req.body.title;
-            movie.releaseDate = req.body.releaseDate;
-            movie.genre = req.body.genre;
-            movie.actors = req.body.actors;
+    } else {
+        return res.status(403).send({ success: false, message: 'No token provided.' });
+    }
+});
 
-            movie.save((err) => {
-                if (err) res.status(500).send(err);
-                res.json({ success: true, msg: 'Successfully created new movie.' });
-            });
-        }
-    })
-    .put(authJwtController.isAuthenticated, (req, res) => {
-        Movie.findOneAndUpdate({ title: req.body.title }, req.body, { new: true }, (err, movie) => {
-            if (err) res.status(500).send(err);
-            res.json({ success: true, msg: 'Successfully updated movie.' });
-        });
-    })
-    .delete(authController.isAuthenticated, (req, res) => {
-        Movie.findOneAndDelete({ title: req.body.title }, (err) => {
-            if (err) res.status(500).send(err);
-            res.json({ success: true, msg: 'Successfully deleted movie.' });
-        });
-    })
-    .all((req, res) => {
-        res.status(405).send({ status: 405, message: 'HTTP method not supported.' });
-    });
+function getGenreOfMovie(movieId) {
+    // Assuming movies is an array of movie objects
+    const movies = [
+        { id: '1', name: 'Movie 1', genre: 'Action' },
+        { id: '2', name: 'Movie 2', genre: 'Drama' },
+        // Add more movies here
+    ];
+
+    // Find the movie with the given id
+    const movie = movies.find(movie => movie.id === movieId);
+
+    // If the movie is found, return its genre. Otherwise, return null.
+    return movie ? movie.genre : null;
+}
 
 // route to create a review
 router.post('/reviews', function (req, res) {
@@ -212,10 +199,11 @@ router.get('/movies', function (req, res) {
     }
 });
 
-
 app.use('/', router);
 const port = process.env.PORT || 8000;
 app.listen(port, () => {
     console.log('Server listening on port ' + port);
 })
 module.exports = app; // for testing only
+
+
