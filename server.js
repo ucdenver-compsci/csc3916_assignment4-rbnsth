@@ -23,8 +23,6 @@ app.use(passport.initialize());
 
 var router = express.Router();
 
-const ga = require('universal-analytics');
-
 function getJSONObjectForMovieRequirement(req) {
     var json = {
         headers: "No headers",
@@ -95,12 +93,31 @@ router.post('/signin', function (req, res) {
 
 router.route('/movies')
     .get((req, res) => {
-        Movie.find({}, (err, movies) => {
-            if (err) {
-                return res.status(500).send(err);
-            }
-            res.json(movies);
-        });
+        if (req.query.reviews === 'true') {
+            Movie.aggregate([
+                {
+                    $lookup: {
+                        from: "reviews",
+                        localField: "_id", // field in the movies collection
+                        foreignField: "movieId", // field in the reviews collection
+                        as: "reviews" // output array where the joined reviews will be placed
+                    }
+                }
+            ]).exec(function (err, movies) {
+                if (err) {
+                    res.send(err);
+                } else {
+                    res.json(movies);
+                }
+            });
+        } else {
+            Movie.find({}, (err, movies) => {
+                if (err) {
+                    return res.status(500).send(err);
+                }
+                res.json(movies);
+            });
+        }
     })
     .post((req, res) => {
         if (!req.body.title || !req.body.releaseDate || !req.body.genre || !req.body.actors) {
@@ -142,18 +159,6 @@ router.post('/reviews', function (req, res) {
     review.review = req.body.review;
     review.rating = req.body.rating;
 
-    // Create a new visitor with a unique user id
-    var visitor = ga('UA-XXXX-Y', 'userId'); // Replace 'UA-XXXX-Y' with your actual tracking ID
-
-    // Send event to Google Analytics
-    visitor.event({
-        ea: '/reviews', // Event Action
-        el: 'API Request for Movie Review', // Event Label
-        ev: 1, // Event Value
-        cd1: req.body.movieId, // Custom Dimension 1: Movie Name
-        cm1: 1 // Custom Metric 1: Review Count
-    }).send();
-
     review.save(function (err) {
         if (err) {
             res.send(err);
@@ -184,33 +189,7 @@ router.delete('/reviews/:review_id', function (req, res) {
     });
 });
 
-router.get('/movies', function (req, res) {
-    if (req.query.reviews === 'true') {
-        Movie.aggregate([
-            {
-                $lookup: {
-                    from: "reviews",
-                    localField: "_id", // field in the movies collection
-                    foreignField: "movieId", // field in the reviews collection
-                    as: "reviews" // output array where the joined reviews will be placed
-                }
-            }
-        ]).exec(function (err, movies) {
-            if (err) {
-                res.send(err);
-            } else {
-                res.json(movies);
-            }
-        });
-    } else {
-        Movie.find(function (err, movies) {
-            if (err) {
-                res.send(err);
-            }
-            res.json(movies);
-        });
-    }
-});
+
 
 app.use('/', router);
 const port = process.env.PORT || 8000;
