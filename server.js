@@ -118,21 +118,23 @@ router.post('/signin', function (req, res) {
     })
 });
 
-router.route('/movies/:id?') // Making the id parameter optional
+router.route('/movies/:id?') 
     .get((req, res) => {
-        let query;
+        let query = {};
+        // Check if an ID was provided
         if (req.params.id) {
             let id;
             try {
-                id = mongoose.Types.ObjectId(req.params.id);
+                id = mongoose.Types.ObjectId(req.params.id); // Try to convert to ObjectId
             } catch (error) {
-                id = req.params.id;
+                id = req.params.id; // Use as string if conversion fails
             }
-            query = { $or: [{ _id: id }, { title: id }] }; // Use title as id if ObjectId conversion fails
-        } else {
-            query = {}; // Fetch all movies if no id is provided
+            query = { $or: [{ _id: id }, { title: id }] }; // Search by _id or title
+        } else if (req.query.title) {
+            // If no ID but there's a title query param, use it for filtering
+            query.title = req.query.title;
         }
-
+        // The rest remains the same
         if (req.query.reviews === 'true') {
             Movie.aggregate([
                 { $match: query },
