@@ -15,6 +15,7 @@ var Movie = require('./Movies');
 var Review = require('./Reviews');
 
 var crypto = require('crypto');
+const e = require('express');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 var app = express();
 app.use(cors());
@@ -134,7 +135,6 @@ router.route('/movies/:id?')
             // If no ID but there's a title query param, use it for filtering
             query.title = req.query.title;
         }
-        // The rest remains the same
         if (req.query.reviews === 'true') {
             Movie.aggregate([
                 { $match: query },
@@ -194,56 +194,41 @@ router.route('/movies/:id?')
         res.status(405).send({ status: 405, message: 'HTTP method not supported.' });
     });
 
-// route to create a review
-router.post('/reviews', function (req, res) {
-    if (!req.body.movieId || !req.body.username || !req.body.review || !req.body.rating) {
-        return res.status(400).json({ success: false, msg: 'Please include all required fields: movieId, username, review, and rating.' });
-    } 
+    
+router.route('/reviews/:id?') 
+    .get((req, res) => {
+        const idOrTitle = req.params.id;
+        const movie = movies.find(m => m.title === idOrTitle || m.id === idOrTitle);
 
-    var review = new Review();
-    review.movieId = req.body.movieId;
-    review.username = req.body.username;
-    review.review = req.body.review;
-    review.rating = req.body.rating;
-
-    review.save(function (err) {
-        if (err) {
-            return res.status(500).send(err);
+        if (!movie) {
+            return res.status(404).send('The movie with the given ID or title was not found.');
         }
-        sendEventToGA4('review', getJSONObjectForMovieRequirement(req));
-        return res.status(201).json({ message: 'Review created!' });
-    });
-});
 
-// route to get all reviews
-router.get('/reviews', function (req, res) {
-    Review.find(function (err, reviews) {
-        if (err) {
-            return res.status(500).send(err);
-        }
-        return res.status(200).json(reviews);
-    });
-});
+        res.send(movie);
+    })
+    .post(authJwtController.isAuthenticated, (req, res) => {
+        if (!req.body.movieId || !req.body.username || !req.body.review || !req.body.rating) {
+            res.json({ success: false, msg: 'Please include all required fields: movieId, username, review, and rating.' });
+        } else {
+            var review = new Review();
+            review.movieId = req.body.movieId;
+            review.username = req.body.username;
+            review.review = req.body.review;
+            review.rating = req.body.rating;
 
-// route to get a review by ID or movieId
-router.get('/reviews/:id', function (req, res) {
-    Review.find({ $or: [{ _id: req.params.id }, { movieId: req.params.id }] }, function (err, review) {
-        if (err) {
-            return res.status(500).send(err);
+            review.save((err) => {
+                if (err) res.status(500).send(err);
+                sendEventToGA4('review', getJSONObjectForMovieRequirement(req));
+                res.json({ success: true, msg: 'Review created!' });
+            });
         }
-        return res.status(200).json(review);
+    })
+    .delete(authController.isAuthenticated, (req, res) => {
+        Review.findOneAndDelete({ _id: req.body._id }, (err) => {
+            if (err) res.status(500).send(err);
+            res.json({ success: true, msg: 'Review deleted!' });
+        });
     });
-});
-
-// delete a review by ID
-router.delete('/reviews/:id', function (req, res) {
-    Review.findByIdAndDelete(req.params.id, function (err, review) {
-        if (err) {
-            return res.status(500 ).send(err);
-        }
-        return res.status(200).json({ message: 'Review deleted!' });
-    });
-});
 
 app.use('/', router);
 const port = process.env.PORT || 8000;
