@@ -217,35 +217,34 @@ router.post('/reviews', function (req, res) {
     });
 });
 
-// route to get all reviews
 router.get('/reviews', function (req, res) {
-    Review.find(function (err, reviews) {
-        if (err) {
-            return res.status(500).send(err);
-        }
-        return res.status(200).json(reviews);
-    });
+    if (req.query.movieId) {
+        let movieId = req.query.movieId.trim();
+        Review.find({ movieId: movieId }, function (err, reviews) {
+            if (err) {
+                return res.status(500).send(err);
+            }
+            return res.status(200).json(reviews);
+        });
+    } else if (req.query.reviewId) {
+        let reviewId = req.query.reviewId.trim();
+        Review.findById(reviewId, function (err, review) {
+            if (err) {
+                return res.status(500).send(err);
+            }
+            return res.status(200).json(review);
+        });
+    } else {
+        Review.find(function (err, reviews) {
+            if (err) {
+                return res.status(500).send(err);
+            }
+            return res.status(200).json(reviews);
+        });
+    }
 });
 
-// route to get a review by ID or movieId
-router.get('/reviews/:id', function (req, res) {
-    Review.find({ $or: [{ _id: req.params.id }, { movieId: req.params.id }] }, function (err, review) {
-        if (err) {
-            return res.status(500).send(err);
-        }
-        return res.status(200).json(review);
-    });
-});
 
-// delete a review by ID
-router.delete('/reviews/:id', function (req, res) {
-    Review.findByIdAndDelete(req.params.id, function (err, review) {
-        if (err) {
-            return res.status(500).send(err);
-        }
-        return res.status(200).json({ message: 'Review deleted!' });
-    });
-});
 
 app.use('/', router);
 const port = process.env.PORT || 8000;
