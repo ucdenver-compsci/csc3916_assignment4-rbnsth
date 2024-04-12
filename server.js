@@ -118,32 +118,45 @@ router.post('/signin', function (req, res) {
     })
 });
 
-router.route('/movies')
-router.route('/movies')
+router.route('/movies/:id?') // Making the id parameter optional
     .get((req, res) => {
+        let query;
+        if (req.params.id) {
+            let id;
+            try {
+                id = mongoose.Types.ObjectId(req.params.id);
+            } catch (error) {
+                id = req.params.id;
+            }
+            query = { $or: [{ _id: id }, { title: id }] }; // Use title as id if ObjectId conversion fails
+        } else {
+            query = {}; // Fetch all movies if no id is provided
+        }
+
         if (req.query.reviews === 'true') {
             Movie.aggregate([
+                { $match: query },
                 {
                     $lookup: {
                         from: "reviews",
-                        localField: "_id", // field in the movies collection
-                        foreignField: "movieId", // field in the reviews collection
-                        as: "reviews" // output array where the joined reviews will be placed
+                        localField: "_id",
+                        foreignField: "movieId",
+                        as: "reviews"
                     }
                 }
-            ]).exec(function (err, movies) {
+            ]).exec(function (err, result) {
                 if (err) {
                     res.send(err);
                 } else {
-                    res.json(movies);
+                    res.json(result); // result could be either a single movie or an array of movies
                 }
             });
         } else {
-            Movie.find({}, (err, movies) => {
+            Movie.find(query, (err, result) => {
                 if (err) {
                     return res.status(500).send(err);
                 }
-                res.json(movies);
+                res.json(result); // result could be either a single movie or an array of movies
             });
         }
     })
@@ -179,7 +192,6 @@ router.route('/movies')
         res.status(405).send({ status: 405, message: 'HTTP method not supported.' });
     });
 
-
 // route to create a review
 router.post('/reviews', function (req, res) {
     if (!req.body.movieId || !req.body.username || !req.body.review || !req.body.rating) {
@@ -210,7 +222,27 @@ router.get('/reviews', function (req, res) {
         return res.status(200).json(reviews);
     });
 });
-    
+
+// route to get a review by ID or movieId
+router.get('/reviews/:id', function (req, res) {
+    Review.find({ $or: [{ _id: req.params.id }, { movieId: req.params.id }] }, function (err, review) {
+        if (err) {
+            return res.status(500).send(err);
+        }
+        return res.status(200).json(review);
+    });
+});
+
+// delete a review by ID
+router.delete('/reviews/:id', function (req, res) {
+    Review.findByIdAndDelete(req.params.id, function (err, review) {
+        if (err) {
+            return res.status(500 ).send(err);
+        }
+        return res.status(200).json({ message: 'Review deleted!' });
+    });
+});
+
 app.use('/', router);
 const port = process.env.PORT || 8000;
 app.listen(port, () => {
